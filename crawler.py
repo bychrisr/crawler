@@ -27,7 +27,7 @@ import json
 from datetime import datetime
 from typing import Dict, List, Set, Optional, Tuple
 
-__version__ = "2.0.0"
+__version__ = "2.0.1"
 
 # Configuração de logging
 logging.basicConfig(
@@ -51,10 +51,6 @@ class CrawlerConfig:
     # Rate limiting
     MIN_REQUEST_INTERVAL = 0.5  # Segundos entre requests
     
-    # Validação
-    MIN_FILE_SIZE_PER_PAGE = 500  # Bytes mínimos esperados por página
-    MIN_CONTENT_RATIO = 0.3  # Ratio mínimo de conteúdo útil vs HTML total
-    
     # Patterns de exclusão (mais conservador)
     JUNK_URL_PATTERNS = re.compile(
         r'^(privacy-policy|terms-of-service|cookie-policy|legal|license)$',
@@ -63,6 +59,31 @@ class CrawlerConfig:
     
     # Extensões de arquivo a ignorar
     IGNORED_EXTENSIONS = {'.pdf', '.zip', '.tar', '.gz', '.exe', '.dmg', '.jpg', '.png', '.gif', '.svg'}
+    
+    @staticmethod
+    def calculate_expected_ratio(stats: Dict) -> float:
+        """
+        Calcula ratio mínimo esperado de conversão HTML→Markdown baseado no conteúdo.
+        
+        Sites modernos (React/Next/Vue) têm muito HTML estrutural (CSS inline, JS, metadados),
+        resultando em ratios muito baixos (~1%). Esta função adapta o threshold dinamicamente.
+        """
+        fetched = max(stats.get('fetched', 1), 1)
+        code_blocks = stats.get('code_blocks', 0)
+        
+        # Calcula densidade de código (code blocks por página)
+        code_density = code_blocks / fetched
+        
+        # Sites de documentação técnica (muito código inline)
+        if code_density > 2:  # >2 code blocks por página
+            return 0.01  # 1% - sites com muito código têm muito HTML de highlighting
+        
+        # Sites pequenos podem ser mais densos
+        if fetched < 20:
+            return 0.03  # 3% - amostras pequenas podem ter mais variação
+        
+        # Sites modernos padrão (React/Next/Vue com SSR)
+        return 0.015  # 1.5% - padrão realista para sites modernos
 
 
 class UXEnhancedCrawler:
@@ -78,7 +99,8 @@ class UXEnhancedCrawler:
         min_content_length: int = 100,
         respect_robots: bool = True,
         auth: Optional[Tuple[str, str]] = None,
-        custom_headers: Optional[Dict[str, str]] = None
+        custom_headers: Optional[Dict[str, str]] = None,
+        debug: bool = False
     ):
         self.base_url = base_url
         self.output_file = output_file
@@ -89,6 +111,7 @@ class UXEnhancedCrawler:
         self.respect_robots = respect_robots
         self.auth = auth
         self.custom_headers = custom_headers or {}
+        self.debug = debug
         
         # Estado interno
         self.visited_urls: Set[str] = set()
@@ -111,7 +134,9 @@ class UXEnhancedCrawler:
             'retries_performed': 0,
             'cache_hits': 0,
             'validation_warnings': [],
-            'robots_blocked': 0
+            'robots_blocked': 0,
+            'code_blocks': 0,  # Novo: contador de code blocks
+            'empty_pages_skipped': 0  # Novo: páginas vazias puladas no TOC
         }
         
         # Extrai domínio base e scheme
@@ -423,6 +448,62 @@ class UXEnhancedCrawler:
                         if processed_count >= self.max_pages:
                             break
 
+    def _detect_code_language(self, code: str) -> str:
+        """
+        Detecta a linguagem de um bloco de código via heurística.
+        
+        Args:
+            code: Conteúdo do bloco de código
+            
+        Returns:
+            String com a linguagem detectada ('javascript', 'python', etc.) ou 'text'
+        """
+        code_lower = code.lower()
+        
+        # JavaScript/TypeScript
+        if any(keyword in code for keyword in ['import ', 'export ', 'const ', 'let ', 'var ', '=>']):
+            if 'tsx' in code_lower or '<' in code and '>' in code:
+                return 'tsx'
+            if 'typescript' in code_lower or ': string' in code or ': number' in code:
+                return 'typescript'
+            return 'javascript'
+        
+        # React/JSX
+        if '<' in code and '>' in code and any(x in code for x in ['className', 'onClick', 'useState', 'useEffect']):
+            return 'jsx'
+        
+        # Python
+        if any(keyword in code for keyword in ['def ', 'import ', 'from ', 'class ', 'self.', '__init__']):
+            return 'python'
+        
+        # Bash/Shell
+        if code.startswith('#!') or any(keyword in code for keyword in ['#!/bin/', 'npm ', 'pip ', 'git ']):
+            return 'bash'
+        
+        # JSON
+        if code.strip().startswith('{') or code.strip().startswith('['):
+            try:
+                import json
+                json.loads(code)
+                return 'json'
+            except:
+                pass
+        
+        # CSS
+        if '{' in code and '}' in code and ':' in code and any(x in code_lower for x in ['color', 'margin', 'padding', 'display']):
+            return 'css'
+        
+        # HTML
+        if '<!DOCTYPE' in code or '<html' in code_lower:
+            return 'html'
+        
+        # Markdown
+        if code.startswith('#') or '```' in code:
+            return 'markdown'
+        
+        # Fallback
+        return 'text'
+
     def _html_to_markdown(self, html: str, url: str) -> str:
         """Converte HTML para Markdown com fallback robusto."""
         soup = BeautifulSoup(html, "html.parser")
@@ -431,18 +512,26 @@ class UXEnhancedCrawler:
             tag.decompose()
         
         content = []
+        code_blocks_count = 0
         
+        # Título principal
         h1 = soup.find("h1")
         if h1:
             content.append(f"# {h1.get_text().strip()}\n")
         else:
-            content.append(f"# {urlparse(url).path.replace('/', ' ').strip()}\n")
+            # Usa path da URL como fallback
+            path_title = urlparse(url).path.replace('/', ' ').strip()
+            if path_title:
+                content.append(f"# {path_title}\n")
 
+        # Estratégia de fallback para encontrar conteúdo principal
         main = soup.find("main") or soup.find("article") or soup.find(class_=re.compile(r'content|main|body', re.I))
         
         if main:
             has_content = main.find_all(['p', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'pre'], limit=3)
             if not has_content:
+                if self.debug:
+                    print(f"  [DEBUG] Main vazio em {url}, usando body como fallback")
                 logging.warning(f"Main vazio em {url}, usando body como fallback")
                 main = soup.body
         else:
@@ -452,42 +541,69 @@ class UXEnhancedCrawler:
             for tag in main.find_all(['nav', 'header', 'footer', 'aside']):
                 tag.decompose()
         
+        # Contadores para debug
+        p_count = h_count = li_count = 0
+        
+        # Extrai conteúdo
         for element in main.find_all():
             if element.name in ["h2", "h3", "h4", "h5", "h6"]:
                 level = int(element.name[1])
                 text = element.get_text().strip()
                 if text:
                     content.append(f"{'#' * level} {text}\n")
+                    h_count += 1
             elif element.name == "p":
                 text = element.get_text().strip()
                 if text:
                     content.append(text + "\n")
+                    p_count += 1
             elif element.name in ["ul", "ol"]:
                 for li in element.find_all("li", recursive=False):
                     li_text = li.get_text().strip()
                     if li_text:
                         content.append(f"- {li_text}\n")
+                        li_count += 1
             elif element.name == "pre":
                 code_text = element.get_text()
                 lang = "text"
+                
+                # Tenta pegar linguagem da classe
                 if element.find("code"):
                     code_class = element.find("code").get("class", [])
                     for cls in code_class:
                         if cls.startswith("language-"):
                             lang = cls.split("-", 1)[1]
                             break
+                
+                # Se não encontrou, detecta via heurística
+                if lang == "text":
+                    lang = self._detect_code_language(code_text)
+                
                 content.append(f"```{lang}\n{code_text}\n```\n")
+                code_blocks_count += 1
             elif element.name == "code" and not element.find_parent("pre"):
                 content.append(f"`{element.get_text()}`")
             elif element.name == "blockquote":
                 quote_text = element.get_text().strip()
                 if quote_text:
                     content.append(f"> {quote_text}\n")
+        
+        # Atualiza estatísticas de code blocks
+        with self.lock:
+            self.stats['code_blocks'] += code_blocks_count
+        
+        # Debug output
+        if self.debug:
+            print(f"  [DEBUG] Extraído de {url}:")
+            print(f"    - {h_count} headers")
+            print(f"    - {p_count} parágrafos")
+            print(f"    - {li_count} items de lista")
+            print(f"    - {code_blocks_count} code blocks")
 
         return "\n".join(content).strip()
 
     def validate_output(self) -> Dict[str, any]:
-        """Valida a qualidade do output gerado."""
+        """Valida a qualidade do output gerado com thresholds adaptativos."""
         validation = {
             'success': True,
             'warnings': [],
@@ -500,7 +616,9 @@ class UXEnhancedCrawler:
             return validation
         
         file_size = os.path.getsize(self.output_file)
-        expected_min_size = self.stats['fetched'] * CrawlerConfig.MIN_FILE_SIZE_PER_PAGE
+        
+        # Valida tamanho do arquivo (500 bytes por página é mínimo aceitável)
+        expected_min_size = self.stats['fetched'] * 500
         
         if file_size < expected_min_size:
             validation['warnings'].append(
@@ -508,24 +626,40 @@ class UXEnhancedCrawler:
                 f"(esperado: ~{expected_min_size:,} bytes para {self.stats['fetched']} páginas)"
             )
         
+        # Valida ratio de conteúdo com threshold ADAPTATIVO
         if self.stats['total_chars'] > 0:
             content_ratio = file_size / self.stats['total_chars']
-            if content_ratio < CrawlerConfig.MIN_CONTENT_RATIO:
-                validation['warnings'].append(
-                    f"Baixa conversão de HTML para Markdown: {content_ratio:.1%} "
-                    f"(esperado: >{CrawlerConfig.MIN_CONTENT_RATIO:.0%})"
+            
+            # Calcula threshold esperado dinamicamente
+            expected_ratio = CrawlerConfig.calculate_expected_ratio(self.stats)
+            
+            if content_ratio < expected_ratio:
+                # Calcula densidade de código para mensagem mais útil
+                code_density = self.stats.get('code_blocks', 0) / max(self.stats['fetched'], 1)
+                
+                msg = (
+                    f"Conversão HTML→Markdown abaixo do esperado: {content_ratio:.1%} "
+                    f"(esperado: >{expected_ratio:.1%} para este tipo de site)"
                 )
+                
+                # Adiciona contexto se for site de documentação técnica
+                if code_density > 2:
+                    msg += f" [Site de docs técnicas: {code_density:.1f} code blocks/página]"
+                
+                validation['warnings'].append(msg)
         
+        # Valida número de páginas
         if self.stats['fetched'] < 5:
             validation['warnings'].append(
                 f"Poucas páginas crawleadas: {self.stats['fetched']} "
                 f"(pode indicar problema na extração de links ou bloqueio)"
             )
         
+        # Valida failures
         total_attempts = self.stats['fetched'] + self.stats['failed']
         if total_attempts > 0:
             failure_rate = self.stats['failed'] / total_attempts
-            if failure_rate > 0.2:
+            if failure_rate > 0.2:  # >20% de falhas
                 validation['warnings'].append(
                     f"Alta taxa de falhas: {failure_rate:.1%} "
                     f"({self.stats['failed']}/{total_attempts} páginas)"
@@ -547,19 +681,38 @@ class UXEnhancedCrawler:
             f.write(f"- **Total de páginas**: {self.stats['fetched']}\n")
             f.write(f"- **Páginas falhas**: {self.stats['failed']}\n")
             f.write(f"- **Cache hits**: {self.stats['cache_hits']}\n")
-            f.write(f"- **Links encontrados**: {self.stats['links_found']}\n\n")
+            f.write(f"- **Links encontrados**: {self.stats['links_found']}\n")
+            f.write(f"- **Code blocks extraídos**: {self.stats['code_blocks']}\n\n")
             
+            # Gera TOC (pulando páginas vazias)
             f.write("## Table of Contents\n\n")
+            empty_pages_skipped = 0
+            
             for url in sorted(self.pages_content.keys()):
                 html = self.pages_content[url]
                 soup = BeautifulSoup(html, "html.parser")
                 h1 = soup.find("h1")
-                title = h1.get_text().strip() if h1 else urlparse(url).path.replace('/', ' ').strip()
+                title = h1.get_text().strip() if h1 else ""
+                
+                # Skip páginas sem título (root vazias)
+                if not title or len(title.strip()) == 0:
+                    # Tenta usar path como fallback
+                    path_title = urlparse(url).path.strip('/').replace('/', ' ').strip()
+                    if not path_title:
+                        empty_pages_skipped += 1
+                        if self.debug:
+                            print(f"  [DEBUG] Pulando página vazia no TOC: {url}")
+                        continue
+                    title = path_title
+                
                 anchor = re.sub(r'[^\w\s-]', '', title.lower()).replace(" ", "-")
                 f.write(f"- [{title}](#{anchor})\n")
             
+            self.stats['empty_pages_skipped'] = empty_pages_skipped
+            
             f.write("\n---\n\n")
             
+            # Conteúdo
             for url in sorted(self.pages_content.keys()):
                 html = self.pages_content[url]
                 markdown_content = self._html_to_markdown(html, url)
@@ -568,6 +721,9 @@ class UXEnhancedCrawler:
                 f.write("---\n\n")
         
         logging.info(f"Documentação salva: {self.output_file}")
+        
+        if empty_pages_skipped > 0 and self.debug:
+            print(f"  [DEBUG] {empty_pages_skipped} páginas vazias puladas no TOC")
 
     def save_metadata(self):
         """Salva metadados da execução em JSON."""
@@ -598,6 +754,10 @@ class UXEnhancedCrawler:
         print(f"🔄 Retries Realizados: {self.stats['retries_performed']}")
         print(f"\n📝 Total de Caracteres: {self.stats['total_chars']:,}")
         print(f"📖 Total de Palavras: {self.stats['total_words']:,}")
+        print(f"📦 Code Blocks Extraídos: {self.stats['code_blocks']}")
+        
+        if self.stats['empty_pages_skipped'] > 0:
+            print(f"⚠️  Páginas Vazias (puladas no TOC): {self.stats['empty_pages_skipped']}")
         
         if os.path.exists(self.output_file):
             file_size = os.path.getsize(self.output_file)
@@ -683,6 +843,7 @@ def main():
     
     parser.add_argument("--clear-cache", action="store_true", help="Limpa o cache antes de iniciar")
     parser.add_argument("--no-robots", action="store_true", help="Ignora robots.txt (use com cuidado!)")
+    parser.add_argument("--debug", action="store_true", help="Mostra extração de conteúdo em tempo real")
     parser.add_argument("--version", action="version", version=f"Documentation Crawler v{__version__}")
     
     parser.add_argument("--auth-user", help="Usuário para autenticação HTTP básica")
@@ -717,6 +878,9 @@ def main():
             name, value = header.split(':', 1)
             custom_headers[name.strip()] = value.strip()
         print(f"📋 Headers customizados: {len(custom_headers)}")
+    
+    if args.debug:
+        print(f"🐛 Modo DEBUG ativado - mostrando extração em tempo real\n")
 
     crawler = UXEnhancedCrawler(
         base_url=args.base_url,
@@ -727,7 +891,8 @@ def main():
         min_content_length=args.min_content_length,
         respect_robots=not args.no_robots,
         auth=auth,
-        custom_headers=custom_headers
+        custom_headers=custom_headers,
+        debug=args.debug
     )
     crawler.run()
 

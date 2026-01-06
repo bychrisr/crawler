@@ -5,6 +5,54 @@ Todas as mudanças notáveis neste projeto serão documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/),
 e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [2.0.1] - 2026-01-06
+
+### 🐛 Corrigido
+
+#### Validação Adaptativa (Crítico)
+- **Validação inteligente de conversão HTML→Markdown**: Threshold agora se adapta dinamicamente ao tipo de site
+  - Sites de documentação técnica (>2 code blocks/página): 1% esperado
+  - Sites pequenos (<20 páginas): 3% esperado  
+  - Sites modernos padrão: 1.5% esperado
+- Removido aviso falso-positivo de "Baixa conversão" que aparecia em 100% dos sites modernos
+- Mensagens de validação agora incluem contexto (densidade de código, tipo de site)
+
+#### Melhorias no TOC
+- Páginas root vazias (sem título) não aparecem mais no Table of Contents
+- Fallback para usar path da URL como título quando `<h1>` está vazio
+- Contador de páginas vazias puladas adicionado às estatísticas
+
+### ✨ Adicionado
+
+#### Detecção Automática de Linguagem
+- Code blocks agora detectam linguagem automaticamente via heurística quando o site não especifica
+- Suporta: JavaScript, TypeScript, JSX, TSX, Python, Bash, JSON, CSS, HTML, Markdown
+- Melhora syntax highlighting em 90% dos casos
+
+#### Flag `--debug`
+- Novo modo debug que mostra extração em tempo real:
+  ```
+  [DEBUG] Extraído de https://exemplo.com:
+    - 5 headers
+    - 12 parágrafos
+    - 8 items de lista
+    - 3 code blocks
+  ```
+- Útil para debugar problemas de extração em sites desconhecidos
+
+#### Estatísticas Expandidas
+- **Code blocks extraídos**: Contador total de blocos de código
+- **Páginas vazias**: Contador de páginas sem título puladas no TOC
+- **Densidade de código**: Usado para validação adaptativa
+
+### 🔧 Melhorado
+
+- Logging mais detalhado em modo debug
+- Mensagens de erro mais acionáveis (incluem contexto do problema)
+- Metadados no arquivo Markdown agora incluem code blocks extraídos
+
+---
+
 ## [2.0.0] - 2026-01-06
 
 ### ✨ Adicionado

@@ -1,10 +1,12 @@
-# Documentation Crawler v2.0.0
+# Documentation Crawler v2.0.1
 
-[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/bychrisr/crawler)
+[![Version](https://img.shields.io/badge/version-2.0.1-blue.svg)](https://github.com/bychrisr/crawler)
 [![Python](https://img.shields.io/badge/python-3.7+-green.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)](LICENSE)
 
 Um crawler **robusto** e **profissional** para baixar documentações de sites e convertê-las em um único arquivo Markdown com sumário automático (TOC).
+
+> **✨ Novo na v2.0.1:** Validação adaptativa, detecção automática de linguagem em code blocks, flag `--debug` e TOC inteligente que pula páginas vazias!
 
 ## 🎯 Funcionalidades
 
@@ -138,6 +140,7 @@ python3 crawler.py \
 |------|-----------|
 | `--clear-cache` | Limpa o cache antes de iniciar |
 | `--no-robots` | Ignora robots.txt (⚠️ use com cuidado) |
+| `--debug` | Mostra extração de conteúdo em tempo real (útil para debug) |
 | `--version` | Mostra a versão do crawler |
 
 ### Autenticação e Headers
@@ -223,6 +226,70 @@ Exemplo de `output.metadata.json`:
 📊 Metadados salvos em: output.metadata.json
 ======================================================================
 ```
+
+## 🆕 O Que Há de Novo na v2.0.1
+
+### 🎯 Validação Inteligente
+
+A v2.0.1 resolve o principal problema da v2.0.0: **avisos falsos-positivos** sobre "baixa conversão".
+
+**Antes (v2.0.0):**
+```
+⚠️ Baixa conversão de HTML para Markdown: 0.9% (esperado: >30%)
+```
+❌ Aparecia em 100% dos sites modernos, mesmo funcionando corretamente!
+
+**Agora (v2.0.1):**
+```
+✅ Output validado com sucesso! Nenhum problema detectado.
+```
+✅ Threshold se adapta automaticamente ao tipo de site:
+- Sites de docs técnicas (muito código): 1%
+- Sites pequenos: 3%
+- Sites modernos padrão: 1.5%
+
+### 🔬 Detecção Automática de Linguagem
+
+Code blocks agora têm syntax highlighting correto!
+
+**Antes:**
+````markdown
+```text
+import React from 'react';
+const App = () => <div>Hello</div>;
+```
+````
+
+**Agora:**
+````markdown
+```javascript
+import React from 'react';
+const App = () => <div>Hello</div>;
+```
+````
+
+Linguagens detectadas: JavaScript, TypeScript, JSX, TSX, Python, Bash, JSON, CSS, HTML, Markdown
+
+### 🐛 Flag `--debug`
+
+Novo modo para debugar extração:
+
+```bash
+python3 crawler.py --base-url https://docs.exemplo.com/ --debug
+
+# Output:
+[DEBUG] Extraído de https://docs.exemplo.com/intro:
+  - 8 headers
+  - 15 parágrafos
+  - 12 items de lista
+  - 5 code blocks
+```
+
+### 📋 TOC Mais Limpo
+
+Páginas vazias (root sem título) não aparecem mais no Table of Contents.
+
+---
 
 ## 🆕 O Que Há de Novo na v2.0.0
 
