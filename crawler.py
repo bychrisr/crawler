@@ -27,7 +27,7 @@ import json
 from datetime import datetime
 from typing import Dict, List, Set, Optional, Tuple
 
-__version__ = "2.0.1"
+__version__ = "2.0.2"
 
 # Configuração de logging
 logging.basicConfig(
@@ -50,6 +50,10 @@ class CrawlerConfig:
     
     # Rate limiting
     MIN_REQUEST_INTERVAL = 0.5  # Segundos entre requests
+    
+    # Timeouts de inatividade
+    QUEUE_EMPTY_TIMEOUT = 30  # Segundos sem progresso antes de abortar
+    MIN_LINKS_FOR_VALID_PAGE = 1  # Mínimo de links esperados em uma página
     
     # Patterns de exclusão (mais conservador)
     JUNK_URL_PATTERNS = re.compile(
@@ -136,8 +140,13 @@ class UXEnhancedCrawler:
             'validation_warnings': [],
             'robots_blocked': 0,
             'code_blocks': 0,  # Novo: contador de code blocks
-            'empty_pages_skipped': 0  # Novo: páginas vazias puladas no TOC
+            'empty_pages_skipped': 0,  # Novo: páginas vazias puladas no TOC
+            'spa_detected': False  # Novo: se SPA foi detectada
         }
+        
+        # Controle de timeout
+        self.last_progress_time = time.time()
+        self.last_fetched_count = 0
         
         # Extrai domínio base e scheme
         parsed_base = urlparse(self.base_url)
@@ -231,6 +240,65 @@ class UXEnhancedCrawler:
             return True
         
         return False
+
+    def _detect_spa(self, html: str, url: str) -> bool:
+        """
+        Detecta se o site é uma SPA pura (React/Vue/Angular sem SSR).
+        
+        SPAs renderizam conteúdo via JavaScript, retornando HTML quase vazio.
+        Indicadores: <div id="root">, poucos links, HTML pequeno, bundle JS.
+        
+        Args:
+            html: HTML da página
+            url: URL da página
+            
+        Returns:
+            True se detectar SPA pura, False caso contrário
+        """
+        soup = BeautifulSoup(html, "html.parser")
+        
+        # Remove script/style para análise
+        for tag in soup.find_all(["script", "style"]):
+            tag.decompose()
+        
+        # Indicador 1: Div root típica de SPAs
+        root_selectors = ["root", "app", "__next", "__nuxt"]
+        has_root_div = any(soup.find("div", id=selector) for selector in root_selectors)
+        
+        # Indicador 2: Muito pouco conteúdo textual
+        text_content = soup.get_text(strip=True)
+        has_minimal_content = len(text_content) < 200
+        
+        # Indicador 3: Poucos ou nenhum link
+        links = soup.find_all("a", href=True)
+        has_few_links = len(links) < 3
+        
+        # Indicador 4: HTML muito pequeno (típico de SPAs)
+        has_small_html = len(html) < 1500
+        
+        # Indicador 5: Sem parágrafos ou headers
+        has_no_content_tags = not soup.find(['p', 'h1', 'h2', 'h3', 'article', 'main'])
+        
+        # Detecta SPA se múltiplos indicadores presentes
+        indicators_count = sum([
+            has_root_div,
+            has_minimal_content,
+            has_few_links,
+            has_small_html,
+            has_no_content_tags
+        ])
+        
+        is_spa = indicators_count >= 3
+        
+        if is_spa and self.debug:
+            print(f"  [DEBUG] SPA detectada em {url}:")
+            print(f"    - Root div: {has_root_div}")
+            print(f"    - Conteúdo mínimo: {has_minimal_content} ({len(text_content)} chars)")
+            print(f"    - Poucos links: {has_few_links} ({len(links)} links)")
+            print(f"    - HTML pequeno: {has_small_html} ({len(html)} chars)")
+            print(f"    - Sem tags de conteúdo: {has_no_content_tags}")
+        
+        return is_spa
 
     def fetch(self, url: str, retries: Optional[int] = None, timeout: Optional[int] = None) -> Optional[str]:
         """Faz o download de uma URL com retry automático e rate limiting."""
@@ -362,6 +430,7 @@ class UXEnhancedCrawler:
         self.url_queue = [self.base_url]
         
         processed_count = 0
+        consecutive_empty_iterations = 0
         
         print(f"\n{'='*70}")
         print(f"🔍 Documentation Crawler v{__version__}")
@@ -385,12 +454,50 @@ class UXEnhancedCrawler:
 
             with tqdm(desc="Crawleando páginas", total=self.max_pages, unit="página", leave=False) as pbar:
                 while future_to_url and processed_count < self.max_pages:
+                    # Verifica timeout de inatividade
+                    current_time = time.time()
+                    time_since_progress = current_time - self.last_progress_time
+                    
+                    if time_since_progress > CrawlerConfig.QUEUE_EMPTY_TIMEOUT:
+                        if self.stats['fetched'] == self.last_fetched_count:
+                            print(f"\n\n⚠️  Timeout: Sem progresso por {CrawlerConfig.QUEUE_EMPTY_TIMEOUT}s")
+                            print(f"   Páginas crawleadas: {self.stats['fetched']}")
+                            print(f"   Possíveis causas:")
+                            print(f"   - Site é uma SPA (JavaScript puro)")
+                            print(f"   - Problemas de rede")
+                            print(f"   - Site bloqueia crawlers")
+                            print(f"\n💾 Salvando progresso parcial...")
+                            break
+                    
                     for future in as_completed(future_to_url):
                         url = future_to_url[future]
                         try:
                             html = future.result()
                             if html:
                                 soup = BeautifulSoup(html, "html.parser")
+                                
+                                # Detecta SPA na primeira página
+                                if processed_count == 0 and self._detect_spa(html, url):
+                                    self.stats['spa_detected'] = True
+                                    print(f"\n{'='*70}")
+                                    print(f"⚠️  SPA DETECTADA!")
+                                    print(f"{'='*70}")
+                                    print(f"O site {self.base_url} parece ser uma SPA pura")
+                                    print(f"(Single Page Application - React/Vue/Angular).\n")
+                                    print(f"SPAs renderizam conteúdo via JavaScript, que este")
+                                    print(f"crawler não executa. O HTML retornado está quase vazio.\n")
+                                    print(f"📊 Análise:")
+                                    print(f"  - Tamanho HTML: {len(html)} bytes")
+                                    print(f"  - Links encontrados: {len(soup.find_all('a'))}")
+                                    print(f"  - Conteúdo textual: {len(soup.get_text(strip=True))} chars\n")
+                                    print(f"💡 Soluções:")
+                                    print(f"  1. Use a versão de documentação (docs.exemplo.com)")
+                                    print(f"  2. Use Selenium/Puppeteer para SPAs")
+                                    print(f"  3. Verifique se existe versão SSR do site")
+                                    print(f"{'='*70}\n")
+                                    
+                                    # Aborta gracefully
+                                    return
                                 
                                 title_tag = soup.find("h1")
                                 title = title_tag.get_text().strip() if title_tag else urlparse(url).path.split('/')[-1]
@@ -415,6 +522,10 @@ class UXEnhancedCrawler:
                                     self.stats['total_words'] += len(content_text.split())
                                     processed_count += 1
                                     pbar.update(1)
+                                    
+                                    # Atualiza controle de progresso
+                                    self.last_progress_time = time.time()
+                                    self.last_fetched_count = self.stats['fetched']
                                 
                                 logging.info(f"Página processada ({processed_count}/{self.max_pages}): {url}")
                                 
@@ -800,6 +911,13 @@ class UXEnhancedCrawler:
         
         try:
             self.crawl()
+            
+            # Se SPA foi detectada e abortamos, não salva
+            if self.stats['spa_detected']:
+                print(f"\n❌ Crawling abortado: SPA detectada")
+                print(f"📄 Verifique crawler.log para detalhes")
+                sys.exit(1)
+            
             logging.info(f"Total de páginas crawleadas: {len(self.pages_content)}")
             
             self.save_markdown()

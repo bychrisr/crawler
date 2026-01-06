@@ -5,6 +5,63 @@ Todas as mudanças notáveis neste projeto serão documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/),
 e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [2.0.2] - 2026-01-06
+
+### 🐛 Corrigido
+
+#### Detecção de SPA (Crítico)
+- **Detecta SPAs automaticamente**: Crawler agora identifica sites que renderizam via JavaScript (React/Vue/Angular sem SSR)
+- **Aborta gracefully em SPAs**: Em vez de travar em loop infinito, detecta e aborta com mensagem clara
+- **Exit code apropriado**: `exit(1)` quando SPA é detectada, facilitando automação
+
+#### Timeout de Inatividade
+- **Proteção contra deadlock**: Se crawler ficar sem progresso por 30s, aborta automaticamente
+- **Salva progresso parcial**: Mesmo em timeout, salva o que foi crawleado até o momento
+- **Mensagens diagnósticas**: Explica possíveis causas (SPA, rede, bloqueio)
+
+### ✨ Adicionado
+
+#### Sistema de Detecção de SPA
+```
+Indicadores verificados:
+- Div root (#root, #app, #__next, #__nuxt)
+- HTML muito pequeno (<1500 chars)
+- Poucos links (<3)
+- Conteúdo textual mínimo (<200 chars)
+- Ausência de tags de conteúdo (<p>, <h1>, <article>)
+```
+
+#### Mensagens Detalhadas para SPAs
+Quando SPA é detectada, o crawler mostra:
+- Análise técnica (tamanho HTML, links, conteúdo)
+- Soluções alternativas sugeridas
+- Exit imediato para evitar perda de tempo
+
+#### Debug de Detecção de SPA
+No modo `--debug`, mostra análise completa:
+```
+[DEBUG] SPA detectada em https://exemplo.com:
+  - Root div: True
+  - Conteúdo mínimo: True (150 chars)
+  - Poucos links: True (0 links)
+  - HTML pequeno: True (494 chars)
+  - Sem tags de conteúdo: True
+```
+
+### 🔧 Melhorado
+
+- **Controle de progresso**: Rastreia última vez que houve progresso
+- **Estatísticas**: Adicionado `spa_detected` aos metadados
+- **Logging**: Mensagens mais claras sobre por que o crawler parou
+
+### 📚 Documentação
+
+- Adicionada seção sobre limitações de SPAs no README
+- Exemplos de como identificar se um site é SPA
+- Soluções alternativas para crawlear SPAs
+
+---
+
 ## [2.0.1] - 2026-01-06
 
 ### 🐛 Corrigido

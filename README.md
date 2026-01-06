@@ -1,12 +1,14 @@
-# Documentation Crawler v2.0.1
+# Documentation Crawler v2.0.2
 
-[![Version](https://img.shields.io/badge/version-2.0.1-blue.svg)](https://github.com/bychrisr/crawler)
+[![Version](https://img.shields.io/badge/version-2.0.2-blue.svg)](https://github.com/bychrisr/crawler)
 [![Python](https://img.shields.io/badge/python-3.7+-green.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-MIT-orange.svg)](LICENSE)
 
 Um crawler **robusto** e **profissional** para baixar documentações de sites e convertê-las em um único arquivo Markdown com sumário automático (TOC).
 
-> **✨ Novo na v2.0.1:** Validação adaptativa, detecção automática de linguagem em code blocks, flag `--debug` e TOC inteligente que pula páginas vazias!
+> **🚨 Novo na v2.0.2:** Detecção automática de SPAs! O crawler agora identifica sites com JavaScript e aborta gracefully em vez de travar.
+
+> **✨ v2.0.1:** Validação adaptativa, detecção automática de linguagem em code blocks, flag `--debug` e TOC inteligente!
 
 ## 🎯 Funcionalidades
 
@@ -227,6 +229,88 @@ Exemplo de `output.metadata.json`:
 ======================================================================
 ```
 
+## 🆕 O Que Há de Novo na v2.0.2
+
+### 🚨 Detecção Automática de SPA
+
+O crawler agora **detecta automaticamente** sites que usam JavaScript puro (SPAs) e **aborta gracefully** em vez de travar!
+
+**Problema que resolve:**
+```bash
+# Antes (v2.0.1):
+python3 crawler.py --base-url https://spa-site.com/
+# → Trava em loop infinito ou deadlock 🔒
+
+# Agora (v2.0.2):
+python3 crawler.py --base-url https://spa-site.com/
+# → Detecta e aborta com mensagem clara ✅
+```
+
+**Output quando SPA é detectada:**
+```
+======================================================================
+⚠️  SPA DETECTADA!
+======================================================================
+O site https://minimals.cc/components/ parece ser uma SPA pura
+(Single Page Application - React/Vue/Angular).
+
+SPAs renderizam conteúdo via JavaScript, que este
+crawler não executa. O HTML retornado está quase vazio.
+
+📊 Análise:
+  - Tamanho HTML: 494 bytes
+  - Links encontrados: 0
+  - Conteúdo textual: 15 chars
+
+💡 Soluções:
+  1. Use a versão de documentação (docs.exemplo.com)
+  2. Use Selenium/Puppeteer para SPAs
+  3. Verifique se existe versão SSR do site
+======================================================================
+
+❌ Crawling abortado: SPA detectada
+```
+
+### ⏱️ Timeout de Inatividade
+
+Proteção contra crawlers travados:
+
+```
+Se sem progresso por 30s:
+⚠️  Timeout: Sem progresso por 30s
+   Páginas crawleadas: 5
+   Possíveis causas:
+   - Site é uma SPA (JavaScript puro)
+   - Problemas de rede
+   - Site bloqueia crawlers
+
+💾 Salvando progresso parcial...
+```
+
+### 🔬 Como Identificar uma SPA
+
+**Sites que NÃO funcionam (SPAs):**
+- Create React App sem SSR
+- Vue CLI sem SSR
+- Angular sem Universal
+- Sites com `<div id="root"></div>` vazio
+
+**Sites que funcionam:**
+- Next.js (SSR/SSG)
+- Nuxt (SSR/SSG)
+- Gatsby (SSG)
+- Sites estáticos (HTML puro)
+- Docusaurus, VuePress, MkDocs
+
+**Teste rápido:**
+```bash
+# View Source no navegador
+# Se vê conteúdo → ✅ Funciona
+# Se só vê <div id="root"> → ❌ SPA
+```
+
+---
+
 ## 🆕 O Que Há de Novo na v2.0.1
 
 ### 🎯 Validação Inteligente
@@ -390,9 +474,39 @@ pip3 install -r requirements.txt
 
 ## ⚠️ Limitações Conhecidas
 
-- **Sites com JavaScript puro (SPAs)**: Sites que renderizam 100% do conteúdo via JS (sem SSR) não são suportados. Use Selenium/Puppeteer nesses casos.
+### 🚨 SPAs (Single Page Applications) - v2.0.2+
+
+**Não suportado:** Sites que renderizam 100% do conteúdo via JavaScript.
+
+A partir da v2.0.2, o crawler **detecta automaticamente** SPAs e aborta com mensagem clara.
+
+| Framework | SSR? | Funciona? | Exemplo |
+|-----------|------|-----------|---------|
+| **Create React App** | ❌ Não | ❌ Não | `minimals.cc/components` |
+| **Next.js** | ✅ Sim | ✅ Sim | `docs.minimals.cc` |
+| **Vue CLI** | ❌ Não | ❌ Não | Sites Vue sem Nuxt |
+| **Nuxt** | ✅ Sim | ✅ Sim | Sites Nuxt com SSR |
+| **Angular** | ❌ Não* | ❌ Não* | *Sem Universal |
+| **Gatsby** | ✅ SSG | ✅ Sim | Sites estáticos |
+| **Docusaurus** | ✅ SSG | ✅ Sim | Documentações |
+| **VuePress** | ✅ SSG | ✅ Sim | Documentações |
+| **MkDocs** | ✅ SSG | ✅ Sim | Documentações |
+
+**Como identificar uma SPA:**
+1. Abra "View Source" (Ctrl+U) no navegador
+2. Se vê apenas `<div id="root"></div>` vazio → SPA ❌
+3. Se vê conteúdo HTML completo → SSR/SSG ✅
+
+**Soluções para SPAs:**
+- Procure versão de documentação (geralmente usa SSG)
+- Use Selenium/Puppeteer (não incluído)
+- Verifique se o site tem versão SSR
+
+### Outras Limitações
+
 - **Autenticação complexa**: Apenas HTTP Basic Auth é suportada. OAuth e outros métodos requerem modificação no código.
-- **Rate Limiting agressivo**: Alguns sites podem bloquear mesmo com rate limiting. Ajuste manualmente se necessário.
+- **Rate Limiting agressivo**: Alguns sites podem bloquear mesmo com rate limiting. Ajuste `--workers` se necessário.
+- **JavaScript Interativo**: Sites que requerem cliques/interações não são suportados.
 
 ## 🤝 Contribuindo
 
