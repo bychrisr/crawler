@@ -1,65 +1,64 @@
-# Documentation Crawler
+# Documentation Crawler v2.0.0
 
-Um crawler eficiente e otimizado para baixar documentações de sites e convertê-las em um único arquivo Markdown com **sumário automático (TOC)**.
+[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/bychrisr/crawler)
+[![Python](https://img.shields.io/badge/python-3.7+-green.svg)](https://www.python.org/)
+[![License](https://img.shields.io/badge/license-MIT-orange.svg)](LICENSE)
 
-## ⚙️ Funcionalidades
+Um crawler **robusto** e **profissional** para baixar documentações de sites e convertê-las em um único arquivo Markdown com sumário automático (TOC).
 
+## 🎯 Funcionalidades
+
+### Core Features
 - 🔗 **Resolução robusta de links** (relativos/absolutos) com suporte a múltiplos padrões de documentação
-- 🌐 **Crawling baseado em domínio** (crawleia todo o domínio base, ex: `docs.minimals.cc`)
-- 📂 **Conversão para único arquivo Markdown** com TOC automático
-- 📝 **Geração automática de sumário (Table of Contents)**
-- 🛑 **Timeout e retries** para lidar com falhas de rede
-- 🗂 **Log detalhado** salvo em `crawler.log` para debug
-- ⚡ **Threads para aceleração** de downloads paralelos
-- 💾 **Cache local** para evitar downloads repetidos
+- 🌐 **Crawling baseado em domínio** (crawleia todo o domínio base)
+- 📂 **Conversão para Markdown** com TOC automático e metadados
+- 🤖 **Respeita robots.txt** por padrão
+- 💾 **Cache local inteligente** para re-execuções rápidas
+- ⚡ **Threads paralelas** para downloads acelerados
 - 🎨 **Barra de progresso** com `tqdm`
-- 📊 **Estatísticas detalhadas** ao final do processo (links encontrados, duplicados, externos, etc.)
-- 🧹 **Filtro conservador** (remove apenas páginas explicitamente inúteis: privacy-policy, terms-of-service, etc.)
+
+### Features Avançadas v2.0
+- ✅ **Validação automática de output** (detecta problemas de extração)
+- 🔄 **Retry inteligente** com exponential backoff
+- ⏱️ **Rate limiting** automático para evitar bans
+- 🔐 **Autenticação HTTP** (Basic Auth)
+- 📋 **Headers HTTP customizados**
+- 📊 **Metadados em JSON** salvos automaticamente
+- 🛑 **Tratamento robusto de interrupções** (Ctrl+C salva progresso)
+- 📝 **Logging detalhado** para debug
+
+### Melhorias de Extração
+- 🧹 **Fallback inteligente** para sites com SSR/JavaScript
+- 🎯 **Filtro conservador** (remove apenas páginas realmente inúteis)
+- 📊 **Estatísticas detalhadas** (cache hits, retries, links duplicados, etc.)
 
 ## 🛠️ Requisitos
 
 - **Python 3.7+** (use `python3` no Linux/Mac)
-- `pip3` ou `pip` (geralmente vem com o Python)
+- `pip3` ou `pip`
 
-> ⚠️ **IMPORTANTE:** Se você estiver no Linux/Mac, use `python3` e `pip3` em vez de `python` e `pip`.
+## 🚀 Instalação
 
-## 🚀 Como Usar
-
-### 1. Clone ou baixe o script
+### 1. Clone o repositório
 
 ```bash
 git clone git@github.com:bychrisr/crawler.git
 cd crawler
 ```
 
-### 2. (Opcional) Crie um ambiente virtual (recomendado)
-
-Um ambiente virtual isola as dependências do script do resto do seu sistema.
+### 2. (Recomendado) Crie um ambiente virtual
 
 ```bash
-# Cria o ambiente virtual (pasta 'venv')
 python3 -m venv venv
 
 # Ativa o ambiente virtual
-# No Linux/Mac:
+# Linux/Mac:
 source venv/bin/activate
-# No Windows:
+# Windows:
 venv\Scripts\activate
 ```
 
 ### 3. Instale as dependências
-
-```bash
-# Se você está usando ambiente virtual ou Python 3 como padrão:
-pip install requests beautifulsoup4 tqdm lxml
-
-# Se você precisa especificar Python 3:
-pip3 install requests beautifulsoup4 tqdm lxml
-```
-
-> **Nota:** O pacote `lxml` é opcional mas recomendado para parsing HTML mais rápido.
-
-Ou usando o arquivo `requirements.txt`:
 
 ```bash
 pip install -r requirements.txt
@@ -67,51 +66,25 @@ pip install -r requirements.txt
 pip3 install -r requirements.txt
 ```
 
-### 4. Execute o script
+## 📖 Uso
 
-#### Uso Básico
+### Uso Básico
 
 ```bash
 python3 crawler.py --base-url <URL_DA_DOCUMENTACAO>
 ```
 
-Este comando usará os **valores padrão** para todos os outros parâmetros.
+### Exemplos Práticos
 
-#### Exemplos Práticos
-
-**Exemplo 1: Documentação do Minimals UI**
-
+#### Documentação simples
 ```bash
 python3 crawler.py \
   --base-url https://docs.minimals.cc/introduction/ \
   --output minimals-docs.md \
-  --max-pages 100 \
-  --workers 3
+  --max-pages 100
 ```
 
-**Exemplo 2: Documentação do TradingView Lightweight Charts**
-
-```bash
-python3 crawler.py \
-  --base-url https://tradingview.github.io/lightweight-charts/docs \
-  --output tradingview-docs.md \
-  --max-pages 200 \
-  --workers 4
-```
-
-**Exemplo 3: Com limpeza de cache e filtro de conteúdo**
-
-```bash
-python3 crawler.py \
-  --base-url https://docs.exemplo.com/ \
-  --output docs.md \
-  --max-pages 500 \
-  --min-content-length 200 \
-  --clear-cache
-```
-
-**Exemplo 4: Documentação grande com mais workers**
-
+#### Documentação grande com mais workers
 ```bash
 python3 crawler.py \
   --base-url https://vuejs.org/guide/ \
@@ -120,160 +93,267 @@ python3 crawler.py \
   --workers 5
 ```
 
-## 🎛️ Opções de Comando
-
-| Argumento | Descrição | Valor Padrão |
-| :--- | :--- | :--- |
-| `--base-url` | **(Obrigatório)** A URL base da documentação a ser crawleada. | |
-| `--output` | Nome do arquivo Markdown de saída. | `output.md` |
-| `--workers` | Número de threads para downloads paralelos. Mais threads = mais rápido, mas cuidado com rate limits. | `2` |
-| `--cache-dir` | Diretório para armazenar páginas baixadas localmente. | `.cache` |
-| `--max-pages` | Número máximo de páginas a crawlear. | `500` |
-| `--min-content-length` | Tamanho mínimo de conteúdo (em caracteres) para considerar uma página válida. Páginas menores são descartadas. | `100` |
-| `--clear-cache` | Limpa o diretório de cache antes de iniciar o crawling. | (flag, não tem valor) |
-
-## 📁 Estrutura do Projeto
-
-```
-.
-├── crawler.py          # Script principal
-├── README.md           # Este arquivo
-├── requirements.txt    # Lista de dependências
-├── crawler.log         # Log detalhado (gerado automaticamente)
-├── output.md           # Documentação gerada (nome customizável)
-├── .cache/            # Cache de páginas HTML (criado automaticamente)
-└── venv/              # (opcional) Ambiente virtual
-```
-
-## 📝 Arquivo `requirements.txt`
-
-```txt
-requests>=2.31.0
-beautifulsoup4>=4.12.0
-tqdm>=4.66.0
-lxml>=4.9.0
-```
-
-Para instalar a partir do arquivo:
-
+#### Com autenticação
 ```bash
-pip3 install -r requirements.txt
+python3 crawler.py \
+  --base-url https://docs-privadas.com/ \
+  --auth-user meu-usuario \
+  --auth-pass minha-senha \
+  --output docs-privadas.md
 ```
 
-## 📊 Saída
+#### Com headers customizados
+```bash
+python3 crawler.py \
+  --base-url https://api-docs.com/ \
+  --header "Authorization: Bearer TOKEN123" \
+  --header "X-Custom-Header: value" \
+  --output api-docs.md
+```
+
+#### Ignorar robots.txt (use com responsabilidade!)
+```bash
+python3 crawler.py \
+  --base-url https://site.com/ \
+  --no-robots \
+  --output site-docs.md
+```
+
+## 🎛️ Opções de Linha de Comando
+
+### Argumentos Principais
+
+| Argumento | Descrição | Padrão |
+|-----------|-----------|--------|
+| `--base-url` | **(Obrigatório)** URL base da documentação | - |
+| `--output` | Arquivo de saída Markdown | `output.md` |
+| `--workers` | Número de threads paralelas | `2` |
+| `--max-pages` | Número máximo de páginas a crawlear | `500` |
+| `--cache-dir` | Diretório para cache local | `.cache` |
+| `--min-content-length` | Tamanho mínimo de conteúdo (chars) | `100` |
+
+### Flags
+
+| Flag | Descrição |
+|------|-----------|
+| `--clear-cache` | Limpa o cache antes de iniciar |
+| `--no-robots` | Ignora robots.txt (⚠️ use com cuidado) |
+| `--version` | Mostra a versão do crawler |
+
+### Autenticação e Headers
+
+| Argumento | Descrição |
+|-----------|-----------|
+| `--auth-user` | Usuário para autenticação HTTP básica |
+| `--auth-pass` | Senha para autenticação HTTP básica |
+| `--header` | Header HTTP customizado (pode usar múltiplas vezes) |
+
+## 📁 Estrutura de Saída
 
 Após a execução, você terá:
 
-- **Arquivo de Saída:** Um único arquivo `.md` contendo toda a documentação com:
-  - Sumário (Table of Contents) com links internos
-  - Conteúdo de todas as páginas em Markdown
-  - Links para as fontes originais
-- **Arquivo de Log:** `crawler.log` com detalhes técnicos do processo
-- **Cache:** Pasta `.cache/` com páginas HTML baixadas (para re-execuções mais rápidas)
+```
+.
+├── output.md                 # Documentação em Markdown
+├── output.metadata.json      # Metadados da execução
+├── crawler.log              # Log detalhado
+└── .cache/                  # Cache de páginas HTML
+    ├── abc123def.html
+    └── ...
+```
 
-### Exemplo de Resumo Final
+### Arquivo de Metadados (JSON)
+
+Exemplo de `output.metadata.json`:
+
+```json
+{
+  "version": "2.0.0",
+  "base_url": "https://docs.exemplo.com/",
+  "started_at": "2026-01-05T23:00:00",
+  "finished_at": "2026-01-05T23:05:32",
+  "config": {
+    "max_workers": 3,
+    "max_pages": 100,
+    "min_content_length": 100,
+    "respect_robots": true
+  },
+  "stats": {
+    "fetched": 87,
+    "failed": 2,
+    "cache_hits": 12,
+    "links_found": 95,
+    "retries_performed": 4,
+    ...
+  }
+}
+```
+
+## 📊 Exemplo de Resumo de Execução
 
 ```
-============================================================
+======================================================================
 📊 RESUMO DO CRAWLING
-============================================================
-✅ Páginas Crawleadas: 47
-❌ Páginas Falhas: 0
-🗑️  Páginas Filtradas (junk): 2
-📏 Páginas Muito Pequenas: 3
-🔗 Links Encontrados: 52
-🌐 Links Externos (ignorados): 15
-♻️  Links Duplicados (ignorados): 8
-📝 Total de Caracteres: 245,892
-📖 Total de Palavras: 38,421
-💾 Tamanho do Arquivo: 189.45 KB
-⏱️  Tempo Total: 00:02:34
-============================================================
+======================================================================
+✅ Páginas Crawleadas: 87
+❌ Páginas Falhas: 2
+🗑️  Páginas Filtradas (junk): 3
+📏 Páginas Muito Pequenas: 1
+🤖 Bloqueadas por robots.txt: 0
+
+🔗 Links Encontrados: 95
+🌐 Links Externos (ignorados): 234
+♻️  Links Duplicados (ignorados): 1,523
+
+💾 Cache Hits: 12
+🔄 Retries Realizados: 4
+
+📝 Total de Caracteres: 3,245,892
+📖 Total de Palavras: 456,234
+💾 Tamanho do Arquivo: 245,892 bytes (240.13 KB)
+⏱️  Tempo Total: 00:05:32
+
+======================================================================
+🔍 VALIDAÇÃO DE QUALIDADE
+======================================================================
+✅ Output validado com sucesso! Nenhum problema detectado.
+
+======================================================================
+📄 Logs detalhados salvos em: crawler.log
+📊 Metadados salvos em: output.metadata.json
+======================================================================
 ```
 
-## 🔍 Melhorias na Versão Atual
+## 🆕 O Que Há de Novo na v2.0.0
 
-### 🆕 O que mudou?
+### ✨ Novidades Principais
 
-1. **Extração de Links Corrigida**
-   - Links agora são extraídos ANTES de destruir tags `<nav>`, `<header>`, `<footer>`
-   - Suporta links relativos e absolutos corretamente
-   - Normalização robusta de URLs (trailing slashes, query params, fragments)
+1. **Validação Automática**
+   - Detecta automaticamente problemas de extração
+   - Avisa se arquivo está muito pequeno para o número de páginas
+   - Identifica baixa conversão HTML → Markdown
+   - Alerta sobre alta taxa de falhas
 
-2. **Lógica de Domínio Melhorada**
-   - Crawleia todo o domínio base (ex: todo `docs.minimals.cc`)
-   - Não mais limitado ao path inicial
+2. **Retry Inteligente**
+   - Exponential backoff automático (2^n segundos)
+   - Configurable retries (padrão: 3 tentativas)
+   - Estatísticas de retries no resumo final
 
-3. **Logging Detalhado**
-   - Estatísticas de links encontrados, externos, duplicados
-   - Log de cada URL processada
-   - Facilita debug quando páginas não são encontradas
+3. **Rate Limiting**
+   - Intervalo mínimo de 0.5s entre requests
+   - Evita bans e respeita servidores
 
-4. **Filtro Conservador**
-   - Remove apenas páginas explicitamente inúteis (privacy-policy, terms-of-service, cookie-policy, legal)
-   - Mantém cobertura completa da documentação
+4. **Autenticação e Headers**
+   - Suporte a HTTP Basic Auth
+   - Headers HTTP customizados
+   - Útil para APIs e docs privadas
 
-5. **Melhor Conversão Markdown**
-   - Suporte a `<blockquote>`
-   - Detecção de `main`, `article` ou classes comuns (`content`, `main`, `body`)
-   - Preserva estrutura de código com syntax highlighting
+5. **Metadados e Observabilidade**
+   - Arquivo JSON com metadados completos
+   - Timestamps de início/fim
+   - Configuração usada
+   - Todas as estatísticas
 
-## ⚠️ Avisos e Boas Práticas
+6. **Tratamento de Interrupções**
+   - Ctrl+C agora salva progresso parcial
+   - Não perde trabalho em interrupções
 
-- **Respeite robots.txt**: Use com responsabilidade e respeite os termos de serviço dos sites
-- **Rate Limiting**: Se crawlear sites grandes, considere usar menos workers ou adicionar delays
-- **Cache**: O cache local pode ocupar espaço em disco. Use `--clear-cache` para limpar
-- **Debugging**: Se poucas páginas foram crawleadas, verifique `crawler.log` para entender o motivo
-- **Python 3**: Sempre use `python3` e `pip3` no Linux/Mac para evitar conflitos com Python 2
+7. **Robots.txt**
+   - Respeita robots.txt por padrão
+   - Flag `--no-robots` para ignorar (use com responsabilidade)
 
-## 🐛 Troubleshooting
+### 🔧 Melhorias Técnicas
 
-### Problema: "ModuleNotFoundError: No module named 'bs4'"
+- Extração robusta para sites com SSR/JavaScript
+- Fallback inteligente quando `<main>` está vazio
+- Logs mais detalhados para debug
+- Código refatorado com type hints
+- Configurações centralizadas em `CrawlerConfig`
+
+## 🔍 Troubleshooting
+
+### Problema: "ModuleNotFoundError"
 
 **Solução:**
 ```bash
-pip3 install beautifulsoup4 requests tqdm lxml
+pip3 install -r requirements.txt
 ```
 
 ### Problema: Poucas páginas crawleadas
 
 **Diagnóstico:**
-1. Verifique `crawler.log` para ver quais links foram encontrados
-2. Teste manualmente se os links funcionam no navegador
-3. Verifique se o site usa JavaScript para renderizar conteúdo (SPAs não são suportados)
+1. Verifique `crawler.log`:
+   ```bash
+   grep "Links encontrados" crawler.log
+   ```
+2. Verifique se robots.txt está bloqueando:
+   ```bash
+   grep "Bloqueado por robots.txt" crawler.log
+   ```
+3. Teste manualmente se os links funcionam no navegador
 
-**Solução para SPAs:**
-- Este crawler não suporta sites que renderizam conteúdo via JavaScript (React, Vue, Angular SPAs)
-- Para esses casos, considere usar Selenium ou Puppeteer
+**Soluções:**
+- Use `--no-robots` se appropriate
+- Aumente `--max-pages` se atingiu o limite
+- Verifique se o site usa JavaScript (SPAs não são suportados)
 
-### Problema: "Permission denied" ao salvar arquivo
+### Problema: Arquivo muito pequeno (validação alerta)
 
-**Solução:**
-```bash
-# Verifique permissões do diretório
-ls -la
+**Causas comuns:**
+- Site usa JavaScript para renderizar (React/Vue SPA)
+- Bloqueio por robots.txt
+- Problemas na extração de conteúdo
 
-# Rode com permissões adequadas ou mude o diretório de saída
-python3 crawler.py --base-url https://... --output ~/Downloads/docs.md
-```
+**Soluções:**
+1. Verifique os avisos de validação no resumo
+2. Analise `crawler.log` para detalhes
+3. Para SPAs, considere usar Selenium/Puppeteer (não suportado atualmente)
 
-## 🤝 Contribuições
+### Problema: Alta taxa de falhas
 
-Pull requests são bem-vindos! Fique à vontade para sugerir melhorias, correções ou novas funcionalidades.
+**Causas:**
+- Timeouts de rede
+- Rate limiting do servidor
+- Bloqueio por firewall/WAF
 
-### Roadmap de Melhorias Futuras
+**Soluções:**
+- Reduza `--workers` para 1-2
+- Use headers customizados se necessário
+- Verifique conectividade de rede
 
-- [ ] Suporte a autenticação (sites que requerem login)
-- [ ] Exportação para outros formatos (PDF, HTML, EPUB)
-- [ ] Suporte a SPAs (com Selenium/Puppeteer)
-- [ ] Rate limiting configurável
-- [ ] Filtros customizáveis via regex
-- [ ] Modo incremental (atualizar apenas páginas modificadas)
+## ⚠️ Limitações Conhecidas
+
+- **Sites com JavaScript puro (SPAs)**: Sites que renderizam 100% do conteúdo via JS (sem SSR) não são suportados. Use Selenium/Puppeteer nesses casos.
+- **Autenticação complexa**: Apenas HTTP Basic Auth é suportada. OAuth e outros métodos requerem modificação no código.
+- **Rate Limiting agressivo**: Alguns sites podem bloquear mesmo com rate limiting. Ajuste manualmente se necessário.
+
+## 🤝 Contribuindo
+
+Pull requests são bem-vindos! Para mudanças maiores:
+
+1. Abra uma issue primeiro para discutir
+2. Fork o projeto
+3. Crie uma branch (`git checkout -b feature/MinhaFeature`)
+4. Commit suas mudanças (`git commit -m 'Add: MinhaFeature'`)
+5. Push para a branch (`git push origin feature/MinhaFeature`)
+6. Abra um Pull Request
+
+## 📝 Changelog
+
+Veja [CHANGELOG.md](CHANGELOG.md) para histórico de versões.
 
 ## 📄 Licença
 
-Este projeto é open source. Use livremente, mas com responsabilidade.
+Este projeto é open source sob a licença MIT. Veja [LICENSE](LICENSE) para detalhes.
+
+## 🙏 Agradecimentos
+
+- [BeautifulSoup4](https://www.crummy.com/software/BeautifulSoup/) - HTML parsing
+- [requests](https://docs.python-requests.org/) - HTTP requests
+- [tqdm](https://github.com/tqdm/tqdm) - Progress bars
 
 ---
 
-**Desenvolvido para crawlear documentações de forma eficiente e gerar Markdown de alta qualidade.**
+**Desenvolvido com ❤️ para a comunidade open source**
+
+Para bugs, sugestões ou dúvidas, [abra uma issue](https://github.com/bychrisr/crawler/issues)!
